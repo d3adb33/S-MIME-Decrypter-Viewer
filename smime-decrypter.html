@@ -1,0 +1,1071 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>S/MIME EML Decrypter & Direct Viewer - Google Workspace Utility</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Roboto+Mono:wght@400;500&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        google: {
+                            blue: '#1a73e8',
+                            hoverBlue: '#1557b0',
+                            bg: '#f8f9fa',
+                            surface: '#ffffff',
+                            text: '#202124',
+                            secondaryText: '#5f6368',
+                            border: '#dadce0',
+                            green: '#1e8e3e',
+                            red: '#d93025',
+                            amber: '#f9ab00',
+                            darkBg: '#202124',
+                            darkSurface: '#2d2e30',
+                            darkBorder: '#3c4043'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Google Sans', 'Roboto', 'sans-serif'],
+                        mono: ['Roboto Mono', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Node-Forge Library for JavaScript Cryptography & PKCS#7/S/MIME -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/forge/1.3.1/forge.min.js"></script>
+    <!-- DOMPurify for HTML sanitization inside iframe -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #f8f9fa;
+            color: #202124;
+        }
+        .google-sans {
+            font-family: 'Google Sans', sans-serif;
+        }
+        .mono {
+            font-family: 'Roboto Mono', monospace;
+        }
+        .drag-over {
+            border-color: #1a73e8 !important;
+            background-color: rgba(26, 115, 232, 0.05) !important;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.05);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 0, 0, 0.3);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-google-bg text-google-text">
+
+    <!-- Header Navbar -->
+    <header class="bg-white border-b border-google-border sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-lg bg-blue-50 text-google-blue flex items-center justify-center font-bold text-xl shadow-inner">
+                    <i class="fa-solid fa-envelope-open-text"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg sm:text-xl font-bold google-sans text-google-text flex items-center gap-2">
+                        S/MIME EML Decrypter & Direct Viewer
+                        <span class="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-google-blue font-medium border border-blue-200">
+                            100% In-Browser
+                        </span>
+                    </h1>
+                    <p class="text-xs text-google-secondaryText hidden sm:block">Inline S/MIME Unwrapping & Direct Web E-Mail Reader</p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-3">
+                <div class="hidden md:flex items-center gap-2 text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-full font-medium">
+                    <i class="fa-solid fa-shield-halved text-emerald-600"></i>
+                    Zero-Trust / No Server Upload
+                </div>
+                <button id="toggle-logs-btn" onclick="toggleLogsDrawer()" class="px-3 py-1.5 text-xs font-medium border border-google-border rounded-md hover:bg-gray-50 flex items-center gap-1.5 transition">
+                    <i class="fa-solid fa-terminal text-google-secondaryText"></i>
+                    <span class="hidden sm:inline">Diagnostic Log</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Security Banner -->
+    <div class="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white px-4 py-2.5 shadow-inner">
+        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between text-xs sm:text-sm gap-2">
+            <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-lock text-emerald-400 text-base"></i>
+                <span><strong>No Mail Client Needed:</strong> EML files are decrypted, parsed, and rendered directly on screen without leaving your local device memory.</span>
+            </div>
+            <div class="text-blue-200 text-xs font-mono">
+                Supports Multi/Triple-Wrapped S/MIME
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Grid -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- LEFT COLUMN: Key & Cert Management (4 Cols) -->
+        <section class="lg:col-span-4 flex flex-col gap-5">
+            
+            <!-- Step 1: Certificate & Key Loader -->
+            <div class="bg-white rounded-xl border border-google-border shadow-sm p-5 transition hover:shadow-md">
+                <div class="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
+                    <div class="flex items-center gap-2.5">
+                        <span class="w-6 h-6 rounded-full bg-google-blue text-white text-xs flex items-center justify-center font-bold">1</span>
+                        <h2 class="text-base font-bold google-sans text-google-text">Credentials & Key</h2>
+                    </div>
+                    <span id="key-status-badge" class="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 font-medium">
+                        Not Loaded
+                    </span>
+                </div>
+
+                <!-- Input Selection Tabs -->
+                <div class="flex rounded-lg bg-gray-100 p-1 mb-4 text-xs font-medium">
+                    <button id="tab-p12" onclick="switchKeyTab('p12')" class="flex-1 py-1.5 rounded-md bg-white shadow-xs text-google-blue font-bold transition text-center">
+                        .P12 / .PFX Bundle
+                    </button>
+                    <button id="tab-pem" onclick="switchKeyTab('pem')" class="flex-1 py-1.5 rounded-md text-google-secondaryText hover:text-google-text transition text-center">
+                        PEM (.key + .crt)
+                    </button>
+                </div>
+
+                <!-- Tab A: P12 / PFX Bundle Upload -->
+                <div id="panel-p12" class="space-y-4">
+                    <div id="p12-dropzone" onclick="document.getElementById('p12-file-input').click()" 
+                         class="border-2 border-dashed border-google-border rounded-lg p-4 text-center cursor-pointer hover:border-google-blue hover:bg-blue-50/50 transition">
+                        <i class="fa-solid fa-file-shield text-2xl text-google-secondaryText mb-2"></i>
+                        <p class="text-xs font-medium text-google-text">Click or Drop <span class="text-google-blue font-bold">.p12</span> or <span class="text-google-blue font-bold">.pfx</span> file</p>
+                        <p class="text-[11px] text-google-secondaryText mt-1">Contains Private Key & Certificate</p>
+                        <input type="file" id="p12-file-input" accept=".p12,.pfx" class="hidden" onchange="handleP12FileSelect(event)">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-google-secondaryText mb-1">P12 / PFX Passphrase</label>
+                        <div class="relative">
+                            <input type="password" id="p12-password" placeholder="Enter certificate password..." 
+                                   class="w-full text-xs px-3 py-2 pr-8 border border-google-border rounded-lg focus:outline-none focus:ring-2 focus:ring-google-blue transition">
+                            <button onclick="togglePasswordVisibility('p12-password', 'p12-eye-icon')" class="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600">
+                                <i id="p12-eye-icon" class="fa-solid fa-eye text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <button onclick="loadP12Certificate()" class="w-full bg-google-blue hover:bg-google-hoverBlue text-white font-medium text-xs py-2.5 rounded-lg shadow-sm transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-key"></i> Unpack Private Key
+                    </button>
+                </div>
+
+                <!-- Tab B: Separate PEM Files -->
+                <div id="panel-pem" class="space-y-4 hidden">
+                    <div>
+                        <label class="block text-xs font-medium text-google-secondaryText mb-1">Private Key (.key / .pem)</label>
+                        <input type="file" id="pem-key-input" accept=".key,.pem" class="text-xs w-full text-google-secondaryText file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-google-blue hover:file:bg-blue-100">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-google-secondaryText mb-1">Certificate (.crt / .cer / .pem)</label>
+                        <input type="file" id="pem-cert-input" accept=".crt,.cer,.pem" class="text-xs w-full text-google-secondaryText file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-google-blue hover:file:bg-blue-100">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-google-secondaryText mb-1">PEM Passphrase (optional)</label>
+                        <input type="password" id="pem-password" placeholder="Passphrase..." class="w-full text-xs px-3 py-2 border border-google-border rounded-lg focus:outline-none focus:ring-2 focus:ring-google-blue transition">
+                    </div>
+                    <button onclick="loadPEMCredentials()" class="w-full bg-google-blue hover:bg-google-hoverBlue text-white font-medium text-xs py-2.5 rounded-lg shadow-sm transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-key"></i> Load PEM Pair
+                    </button>
+                </div>
+            </div>
+
+            <!-- Certificate Metadata Card -->
+            <div id="cert-info-card" class="bg-white rounded-xl border border-google-border shadow-sm p-5 hidden">
+                <div class="flex items-center justify-between mb-3 border-b border-gray-100 pb-2">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-google-secondaryText flex items-center gap-1.5">
+                        <i class="fa-solid fa-id-card text-google-blue"></i> Key Pair Metadata
+                    </h3>
+                    <button onclick="unloadKey()" class="text-xs text-google-red hover:underline font-medium">Unload</button>
+                </div>
+
+                <div class="space-y-2 text-xs">
+                    <div>
+                        <span class="text-google-secondaryText block text-[11px]">Subject CN / Email</span>
+                        <span id="cert-subject" class="font-semibold text-google-text break-all">-</span>
+                    </div>
+                    <div>
+                        <span class="text-google-secondaryText block text-[11px]">Issuer</span>
+                        <span id="cert-issuer" class="text-google-text break-all">-</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 pt-1">
+                        <div>
+                            <span class="text-google-secondaryText block text-[11px]">Valid From</span>
+                            <span id="cert-valid-from" class="text-google-text">-</span>
+                        </div>
+                        <div>
+                            <span class="text-google-secondaryText block text-[11px]">Valid To</span>
+                            <span id="cert-valid-to" class="text-google-text">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Capabilities Card -->
+            <div class="bg-blue-50/60 border border-blue-100 rounded-xl p-4 text-xs text-google-secondaryText space-y-2">
+                <div class="font-bold text-google-text flex items-center gap-1.5">
+                    <i class="fa-solid fa-layer-group text-google-blue"></i> Multi-Wrapping & MIME Engine
+                </div>
+                <ul class="list-disc pl-4 space-y-1 text-[11px]">
+                    <li><strong>Nested CMS:</strong> Automatically recurses through Dual- and Triple-Wrapped S/MIME envelopes.</li>
+                    <li><strong>Decoders:</strong> Quoted-Printable, Base64, UTF-8, Windows-1252 parsing.</li>
+                    <li><strong>Viewer:</strong> Clean in-browser display without installing Outlook or Thunderbird.</li>
+                </ul>
+            </div>
+
+        </section>
+
+        <!-- RIGHT COLUMN: EML Processing & Direct E-Mail Viewer (8 Cols) -->
+        <section class="lg:col-span-8 flex flex-col gap-5">
+            
+            <!-- Step 2: File Upload Card -->
+            <div class="bg-white rounded-xl border border-google-border shadow-sm p-5">
+                <div class="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
+                    <div class="flex items-center gap-2.5">
+                        <span class="w-6 h-6 rounded-full bg-google-blue text-white text-xs flex items-center justify-center font-bold">2</span>
+                        <h2 class="text-base font-bold google-sans text-google-text">Encrypted E-Mail File (.eml / .p7m)</h2>
+                    </div>
+                    <span id="eml-file-name" class="text-xs text-google-secondaryText truncate max-w-[200px]">
+                        No file loaded
+                    </span>
+                </div>
+
+                <div id="eml-dropzone" onclick="document.getElementById('eml-file-input').click()" 
+                     class="border-2 border-dashed border-google-border rounded-xl p-6 text-center cursor-pointer hover:border-google-blue hover:bg-blue-50/30 transition flex flex-col items-center justify-center min-h-[120px]">
+                    <i class="fa-solid fa-file-export text-3xl text-google-blue mb-2"></i>
+                    <p class="text-sm font-medium text-google-text">Drop your encrypted <span class="text-google-blue font-bold">.eml</span> or <span class="text-google-blue font-bold">smime.p7m</span> file here</p>
+                    <p class="text-xs text-google-secondaryText mt-1">Or click to select from your file system</p>
+                    <input type="file" id="eml-file-input" accept=".eml,.p7m,.msg" class="hidden" onchange="handleEMLFileSelect(event)">
+                </div>
+
+                <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+                    <div class="text-xs text-google-secondaryText flex items-center gap-1.5">
+                        <i class="fa-solid fa-eye text-google-blue"></i> Mails are unpacked and displayed immediately below.
+                    </div>
+                    <button id="decrypt-btn" onclick="processDecryption()" disabled class="px-5 py-2.5 bg-google-blue hover:bg-google-hoverBlue disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium text-xs rounded-lg shadow-sm transition flex items-center gap-2">
+                        <i class="fa-solid fa-envelope-open-text"></i> Decrypt & Read Mail Directly
+                    </button>
+                </div>
+            </div>
+
+            <!-- Step 3: Decrypted Email Direct View Panel -->
+            <div id="output-section" class="bg-white rounded-xl border border-google-border shadow-sm p-5 flex-1 flex flex-col hidden">
+                
+                <!-- Email Top Action Bar -->
+                <div class="flex flex-wrap items-center justify-between mb-4 border-b border-gray-200 pb-3 gap-2">
+                    <div class="flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center font-bold">
+                            <i class="fa-solid fa-check text-[10px]"></i>
+                        </span>
+                        <h2 class="text-base font-bold google-sans text-google-text">Direct E-Mail Viewer</h2>
+                    </div>
+                    
+                    <div class="flex items-center gap-2">
+                        <button onclick="downloadDecryptedEML()" class="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-google-text border border-google-border text-xs font-medium rounded-lg transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-arrow-down text-google-blue"></i> Download .eml
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Email Message Header Panel -->
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-4 text-xs space-y-2">
+                    <div class="flex items-start justify-between gap-2 border-b border-slate-200/60 pb-2">
+                        <div class="text-base font-bold text-google-text" id="hdr-subject">
+                            (No Subject)
+                        </div>
+                        <span id="hdr-date" class="text-google-secondaryText text-xs font-mono shrink-0">
+                            -
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-12 gap-2 items-center">
+                        <span class="col-span-2 sm:col-span-1 font-bold text-google-secondaryText text-right">From:</span>
+                        <span id="hdr-from" class="col-span-10 sm:col-span-11 font-semibold text-google-text select-all break-all">-</span>
+                    </div>
+                    <div class="grid grid-cols-12 gap-2 items-center">
+                        <span class="col-span-2 sm:col-span-1 font-bold text-google-secondaryText text-right">To:</span>
+                        <span id="hdr-to" class="col-span-10 sm:col-span-11 text-google-secondaryText select-all break-all">-</span>
+                    </div>
+                    <div id="hdr-cc-row" class="grid grid-cols-12 gap-2 items-center hidden">
+                        <span class="col-span-2 sm:col-span-1 font-bold text-google-secondaryText text-right">Cc:</span>
+                        <span id="hdr-cc" class="col-span-10 sm:col-span-11 text-google-secondaryText select-all break-all">-</span>
+                    </div>
+                </div>
+
+                <!-- Decrypted Attachments Section -->
+                <div id="attachments-container" class="mb-4 bg-blue-50/40 border border-blue-100 rounded-lg p-3 hidden">
+                    <h4 class="text-xs font-bold text-google-text mb-2 flex items-center gap-1.5">
+                        <i class="fa-solid fa-paperclip text-google-blue"></i> Extracted Attachments (<span id="attachments-count">0</span>)
+                    </h4>
+                    <div id="attachments-list" class="flex flex-wrap gap-2">
+                        <!-- Attachment Download Chips -->
+                    </div>
+                </div>
+
+                <!-- Email Content View Tabs & Viewer -->
+                <div class="flex-1 flex flex-col border border-google-border rounded-xl overflow-hidden min-h-[400px]">
+                    <!-- View Mode Selector -->
+                    <div class="bg-gray-100 border-b border-google-border px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div class="flex items-center gap-1">
+                            <button id="btn-view-html" onclick="switchBodyTab('html')" class="px-3 py-1 rounded-md bg-white font-bold text-google-blue shadow-xs">
+                                <i class="fa-solid fa-code text-xs mr-1"></i> Rich HTML Body
+                            </button>
+                            <button id="btn-view-text" onclick="switchBodyTab('text')" class="px-3 py-1 rounded-md text-google-secondaryText hover:text-google-text font-medium">
+                                <i class="fa-solid fa-align-left text-xs mr-1"></i> Plain Text Body
+                            </button>
+                            <button id="btn-view-source" onclick="switchBodyTab('source')" class="px-3 py-1 rounded-md text-google-secondaryText hover:text-google-text font-medium">
+                                <i class="fa-solid fa-terminal text-xs mr-1"></i> Decrypted Source
+                            </button>
+                        </div>
+                        <span class="text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-medium">
+                            <i class="fa-solid fa-shield text-[10px]"></i> Inline Render Active
+                        </span>
+                    </div>
+
+                    <!-- 1. Rich HTML Viewport (Sanitized Iframe) -->
+                    <div id="body-html-wrapper" class="flex-1 w-full bg-white relative">
+                        <iframe id="email-iframe" class="w-full h-full min-h-[400px] border-0" sandbox="allow-same-origin"></iframe>
+                    </div>
+
+                    <!-- 2. Plain Text Viewport -->
+                    <div id="body-text-wrapper" class="flex-1 w-full bg-slate-900 text-slate-100 p-4 font-mono text-xs overflow-auto hidden leading-relaxed">
+                        <pre id="email-plain-text" class="whitespace-pre-wrap break-all"></pre>
+                    </div>
+
+                    <!-- 3. Decrypted Raw Source Viewport -->
+                    <div id="body-source-wrapper" class="flex-1 w-full bg-gray-950 text-emerald-400 p-4 font-mono text-xs overflow-auto hidden leading-tight">
+                        <pre id="email-raw-source" class="whitespace-pre-wrap break-all"></pre>
+                    </div>
+                </div>
+
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- Diagnostic Log Drawer -->
+    <div id="logs-drawer" class="fixed bottom-0 left-0 right-0 bg-slate-950 text-slate-200 border-t border-slate-800 shadow-2xl transition-all duration-300 transform translate-y-full z-40 max-h-[50vh] flex flex-col">
+        <div class="bg-slate-900 px-4 py-2 border-b border-slate-800 flex items-center justify-between text-xs font-mono">
+            <div class="flex items-center gap-2 font-bold text-blue-400">
+                <i class="fa-solid fa-terminal"></i> Cryptographic & MIME Extraction Console
+            </div>
+            <div class="flex items-center gap-3">
+                <button onclick="clearLogs()" class="hover:text-white text-gray-400">Clear</button>
+                <button onclick="toggleLogsDrawer()" class="hover:text-white text-gray-400 text-sm"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+        </div>
+        <div id="log-output" class="p-4 font-mono text-xs overflow-y-auto flex-1 space-y-1.5 leading-relaxed">
+            <div class="text-gray-500">[System Initialized] Ready for PKCS#12 / PEM key input and encrypted EML files.</div>
+        </div>
+    </div>
+
+    <script>
+        /* Global State */
+        const state = {
+            privateKey: null,
+            certificate: null,
+            emlRaw: null,
+            emlFileName: 'decrypted_email.eml',
+            decryptedMimeSource: null,
+            parsedEmail: {
+                headers: {},
+                subject: '',
+                from: '',
+                to: '',
+                cc: '',
+                date: '',
+                htmlBody: '',
+                textBody: '',
+                attachments: []
+            }
+        };
+
+        /* Diagnostic Logger */
+        function log(msg, type = 'info') {
+            const container = document.getElementById('log-output');
+            const entry = document.createElement('div');
+            const timestamp = new Date().toISOString().substring(11, 19);
+            
+            let colorClass = 'text-gray-300';
+            let icon = 'fa-circle-info text-blue-400';
+
+            if (type === 'success') {
+                colorClass = 'text-emerald-400 font-semibold';
+                icon = 'fa-circle-check text-emerald-400';
+            } else if (type === 'warn') {
+                colorClass = 'text-amber-300';
+                icon = 'fa-triangle-exclamation text-amber-400';
+            } else if (type === 'error') {
+                colorClass = 'text-red-400 font-semibold';
+                icon = 'fa-circle-xmark text-red-400';
+            }
+
+            entry.className = `${colorClass} flex items-start gap-2`;
+            entry.innerHTML = `<span class="text-gray-500 select-none">[${timestamp}]</span> <i class="fa-solid ${icon} mt-0.5 text-[10px]"></i> <span class="break-all">${escapeHtml(msg)}</span>`;
+            
+            container.appendChild(entry);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function clearLogs() {
+            document.getElementById('log-output').innerHTML = '';
+            log('Logs cleared.', 'info');
+        }
+
+        function toggleLogsDrawer() {
+            const drawer = document.getElementById('logs-drawer');
+            drawer.classList.toggle('translate-y-full');
+        }
+
+        function escapeHtml(str) {
+            return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        /* Credentials Management */
+        function switchKeyTab(tab) {
+            const p12Tab = document.getElementById('tab-p12');
+            const pemTab = document.getElementById('tab-pem');
+            const p12Panel = document.getElementById('panel-p12');
+            const pemPanel = document.getElementById('panel-pem');
+
+            if (tab === 'p12') {
+                p12Tab.className = 'flex-1 py-1.5 rounded-md bg-white shadow-xs text-google-blue font-bold transition text-center';
+                pemTab.className = 'flex-1 py-1.5 rounded-md text-google-secondaryText hover:text-google-text transition text-center';
+                p12Panel.classList.remove('hidden');
+                pemPanel.classList.add('hidden');
+            } else {
+                pemTab.className = 'flex-1 py-1.5 rounded-md bg-white shadow-xs text-google-blue font-bold transition text-center';
+                p12Tab.className = 'flex-1 py-1.5 rounded-md text-google-secondaryText hover:text-google-text transition text-center';
+                pemPanel.classList.remove('hidden');
+                p12Panel.classList.add('hidden');
+            }
+        }
+
+        function togglePasswordVisibility(inputId, eyeId) {
+            const input = document.getElementById(inputId);
+            const eye = document.getElementById(eyeId);
+            if (input.type === 'password') {
+                input.type = 'text';
+                eye.className = 'fa-solid fa-eye-slash text-xs';
+            } else {
+                input.type = 'password';
+                eye.className = 'fa-solid fa-eye text-xs';
+            }
+        }
+
+        let loadedP12ArrayBuffer = null;
+
+        function handleP12FileSelect(evt) {
+            const file = evt.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                loadedP12ArrayBuffer = e.target.result;
+                log(`Selected PKCS#12 file: ${file.name} (${file.size} bytes)`, 'info');
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function loadP12Certificate() {
+            if (!loadedP12ArrayBuffer) {
+                alert('Please select a .p12 or .pfx certificate file first.');
+                return;
+            }
+
+            const password = document.getElementById('p12-password').value || '';
+            log('Decrypting PKCS#12 / PFX container...', 'info');
+
+            try {
+                const bytes = new Uint8Array(loadedP12ArrayBuffer);
+                let binaryStr = '';
+                for (let i = 0; i < bytes.length; i++) {
+                    binaryStr += String.fromCharCode(bytes[i]);
+                }
+
+                const asn1 = forge.asn1.fromDer(binaryStr);
+                const p12 = forge.pkcs12.pkcs12FromAsn1(asn1, password);
+
+                let keyBags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag });
+                let keyBag = keyBags[forge.pki.oids.pkcs8ShroudedKeyBag];
+
+                if (!keyBag || !keyBag.length) {
+                    keyBags = p12.getBags({ bagType: forge.pki.oids.keyBag });
+                    keyBag = keyBags[forge.pki.oids.keyBag];
+                }
+
+                if (!keyBag || !keyBag.length) {
+                    throw new Error('No RSA Private Key found in PKCS#12 bundle.');
+                }
+
+                state.privateKey = keyBag[0].key;
+
+                const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
+                const certBag = certBags[forge.pki.oids.certBag];
+
+                if (certBag && certBag.length) {
+                    state.certificate = certBag[0].cert;
+                    updateCertMetadataUI(state.certificate);
+                }
+
+                stateKeyLoadedSuccess('PKCS#12 Key Ready');
+                log('Private key successfully loaded into client RAM.', 'success');
+
+                if (state.emlRaw) processDecryption();
+
+            } catch (err) {
+                log(`P12 Error: ${err.message}`, 'error');
+                alert(`Failed to unlock .p12 file: ${err.message}. Verify the password.`);
+            }
+        }
+
+        function loadPEMCredentials() {
+            const keyFile = document.getElementById('pem-key-input').files[0];
+            const certFile = document.getElementById('pem-cert-input').files[0];
+            const password = document.getElementById('pem-password').value;
+
+            if (!keyFile) {
+                alert('Please select a Private Key file (.key / .pem).');
+                return;
+            }
+
+            const keyReader = new FileReader();
+            keyReader.onload = function(e) {
+                try {
+                    const keyPem = e.target.result;
+                    if (password) {
+                        state.privateKey = forge.pki.decryptRsaPrivateKey(keyPem, password);
+                    } else {
+                        state.privateKey = forge.pki.privateKeyFromPem(keyPem);
+                    }
+
+                    log('PEM Private Key loaded.', 'success');
+
+                    if (certFile) {
+                        const certReader = new FileReader();
+                        certReader.onload = function(ce) {
+                            try {
+                                state.certificate = forge.pki.certificateFromPem(ce.target.result);
+                                updateCertMetadataUI(state.certificate);
+                                stateKeyLoadedSuccess('PEM Key & Cert Loaded');
+                            } catch (cErr) {
+                                stateKeyLoadedSuccess('PEM Key Loaded');
+                            }
+                        };
+                        certReader.readAsText(certFile);
+                    } else {
+                        stateKeyLoadedSuccess('PEM Key Loaded');
+                    }
+
+                } catch (err) {
+                    log(`PEM Error: ${err.message}`, 'error');
+                    alert(`Failed to parse PEM private key: ${err.message}`);
+                }
+            };
+            keyReader.readAsText(keyFile);
+        }
+
+        function updateCertMetadataUI(cert) {
+            if (!cert) return;
+            document.getElementById('cert-info-card').classList.remove('hidden');
+
+            const getAttr = (dn, attrName) => {
+                const item = dn.attributes.find(a => a.name === attrName || a.shortName === attrName);
+                return item ? item.value : '';
+            };
+
+            const cn = getAttr(cert.subject, 'commonName') || getAttr(cert.subject, 'emailAddress') || 'S/MIME User';
+            const issuer = getAttr(cert.issuer, 'commonName') || getAttr(cert.issuer, 'organizationName') || 'CA';
+
+            document.getElementById('cert-subject').innerText = cn;
+            document.getElementById('cert-issuer').innerText = issuer;
+            document.getElementById('cert-valid-from').innerText = cert.validity.notBefore.toISOString().substring(0, 10);
+            document.getElementById('cert-valid-to').innerText = cert.validity.notAfter.toISOString().substring(0, 10);
+        }
+
+        function stateKeyLoadedSuccess(badgeText) {
+            const badge = document.getElementById('key-status-badge');
+            badge.className = 'text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold';
+            badge.innerText = badgeText;
+
+            const decryptBtn = document.getElementById('decrypt-btn');
+            if (state.emlRaw) decryptBtn.disabled = false;
+        }
+
+        function unloadKey() {
+            state.privateKey = null;
+            state.certificate = null;
+            document.getElementById('cert-info-card').classList.add('hidden');
+            const badge = document.getElementById('key-status-badge');
+            badge.className = 'text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 font-medium';
+            badge.innerText = 'Not Loaded';
+            document.getElementById('decrypt-btn').disabled = true;
+            log('Unloaded key pair.', 'info');
+        }
+
+        /* EML File Handlers */
+        function handleEMLFileSelect(evt) {
+            const file = evt.target.files[0];
+            if (!file) return;
+            loadEMLFile(file);
+        }
+
+        function loadEMLFile(file) {
+            state.emlFileName = file.name;
+            document.getElementById('eml-file-name').innerText = file.name;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                state.emlRaw = e.target.result;
+                log(`Loaded EML file "${file.name}" (${file.size} bytes)`, 'info');
+
+                if (state.privateKey) {
+                    document.getElementById('decrypt-btn').disabled = false;
+                    processDecryption();
+                } else {
+                    log('File loaded. Waiting for Private Key unlock...', 'warn');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // Drag & Drop Setup
+        const emlDropzone = document.getElementById('eml-dropzone');
+        ['dragenter', 'dragover'].forEach(eventName => {
+            emlDropzone.addEventListener(eventName, (e) => { e.preventDefault(); emlDropzone.classList.add('drag-over'); }, false);
+        });
+        ['dragleave', 'drop'].forEach(eventName => {
+            emlDropzone.addEventListener(eventName, (e) => { e.preventDefault(); emlDropzone.classList.remove('drag-over'); }, false);
+        });
+        emlDropzone.addEventListener('drop', (e) => {
+            const files = e.dataTransfer.files;
+            if (files.length) loadEMLFile(files[0]);
+        });
+
+        /* Core S/MIME Decryption Logic (Multi/Triple Wrapping Aware) */
+        function processDecryption() {
+            if (!state.privateKey) {
+                alert('Please load your Private Key first!');
+                return;
+            }
+            if (!state.emlRaw) {
+                alert('Please upload an encrypted .eml file!');
+                return;
+            }
+
+            log('=== Starting S/MIME Decryption & Inline Unwrapping ===', 'info');
+
+            try {
+                let currentPayload = state.emlRaw;
+                let isEncrypted = true;
+                let unwrappedLayers = 0;
+
+                // Recursive unwrapping loop for nested CMS/S/MIME layers (Dual/Triple wrapping)
+                while (isEncrypted && unwrappedLayers < 5) {
+                    let p7b64Data = extractPKCS7FromEML(currentPayload);
+
+                    if (!p7b64Data) {
+                        if (unwrappedLayers > 0) {
+                            log(`Reached innermost unwrapped MIME structure after ${unwrappedLayers} layer(s).`, 'success');
+                            break;
+                        } else {
+                            throw new Error('No S/MIME encrypted CMS envelope (application/pkcs7-mime or smime.p7m) found.');
+                        }
+                    }
+
+                    log(`Layer ${unwrappedLayers + 1}: Found Base64 PKCS#7 payload. Decoding ASN.1...`, 'info');
+
+                    const derBytes = forge.util.decode64(p7b64Data);
+                    const asn1 = forge.asn1.fromDer(derBytes);
+                    const msg = forge.pkcs7.messageFromAsn1(asn1);
+
+                    log(`PKCS#7 Container OID: ${msg.type}. Unwrapping with RSA Private Key...`, 'info');
+
+                    if (!msg.recipients || !msg.recipients.length) {
+                        throw new Error('No recipient key info found in PKCS#7 envelope.');
+                    }
+
+                    msg.decrypt(msg.recipients[0], state.privateKey);
+
+                    if (!msg.content) {
+                        throw new Error('Decryption returned empty payload. Verify Private Key matches certificate.');
+                    }
+
+                    let decryptedStr = '';
+                    if (typeof msg.content === 'string') {
+                        decryptedStr = msg.content;
+                    } else if (msg.content.getBytes) {
+                        decryptedStr = msg.content.getBytes();
+                    } else {
+                        decryptedStr = forge.util.binary.raw.encode(new Uint8Array(msg.content));
+                    }
+
+                    currentPayload = decryptedStr;
+                    unwrappedLayers++;
+                    log(`Layer ${unwrappedLayers} decrypted successfully (${decryptedStr.length} bytes).`, 'success');
+                }
+
+                state.decryptedMimeSource = currentPayload;
+                
+                // Parse full decrypted MIME structure
+                parseAndDisplayEmail(currentPayload);
+
+            } catch (err) {
+                log(`S/MIME Decryption Error: ${err.message}`, 'error');
+                alert(`Decryption Error: ${err.message}\n\nPlease check if your Private Key corresponds to the recipient cert in the email.`);
+            }
+        }
+
+        /* Extract Base64 PKCS7 block from raw EML */
+        function extractPKCS7FromEML(emlText) {
+            if (emlText.trim().startsWith('MI') || emlText.trim().startsWith('MII')) {
+                return emlText.replace(/\s+/g, '');
+            }
+
+            const lines = emlText.split(/\r?\n/);
+            let inPkcs7Block = false;
+            let b64Lines = [];
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                if (!inPkcs7Block) {
+                    if (line.toLowerCase().includes('application/pkcs7-mime') || 
+                        line.toLowerCase().includes('application/x-pkcs7-mime') ||
+                        line.toLowerCase().includes('smime.p7m')) {
+                        inPkcs7Block = true;
+                    }
+                } else {
+                    if (line.trim() === '') {
+                        for (let j = i + 1; j < lines.length; j++) {
+                            const bodyLine = lines[j].trim();
+                            if (bodyLine.startsWith('--')) break;
+                            if (bodyLine) b64Lines.push(bodyLine);
+                        }
+                        break;
+                    }
+                }
+            }
+
+            if (b64Lines.length > 0) {
+                return b64Lines.join('');
+            }
+
+            // Fallback base64 block search
+            const blocks = emlText.split(/\r?\n\r?\n/);
+            for (let block of blocks) {
+                const cleaned = block.replace(/\s+/g, '');
+                if (cleaned.length > 200 && /^[A-Za-z0-9+/=]+$/.test(cleaned)) {
+                    return cleaned;
+                }
+            }
+
+            return null;
+        }
+
+        /* Full MIME Structure Parser & Inline Renderer */
+        function parseAndDisplayEmail(mimeText) {
+            log('Parsing decrypted MIME structure, encodings, and attachments...', 'info');
+
+            const parsed = {
+                headers: {},
+                subject: '(No Subject)',
+                from: 'Unknown Sender',
+                to: 'Unknown Recipient',
+                cc: '',
+                date: '',
+                htmlBody: '',
+                textBody: '',
+                attachments: []
+            };
+
+            const headerBodySplit = splitHeaderAndBody(mimeText);
+            parsed.headers = parseMimeHeaders(headerBodySplit.header);
+
+            parsed.subject = parsed.headers['subject'] || '(No Subject)';
+            parsed.from = parsed.headers['from'] || 'Unknown Sender';
+            parsed.to = parsed.headers['to'] || 'Unknown Recipient';
+            parsed.cc = parsed.headers['cc'] || '';
+            parsed.date = parsed.headers['date'] || new Date().toLocaleString();
+
+            const contentType = parsed.headers['content-type'] || 'text/plain';
+
+            if (contentType.toLowerCase().includes('multipart/')) {
+                const boundaryMatch = contentType.match(/boundary="?([^";]+)"?/i);
+                if (boundaryMatch && boundaryMatch[1]) {
+                    parseMultipart(headerBodySplit.body, boundaryMatch[1], parsed);
+                } else {
+                    parsed.textBody = headerBodySplit.body;
+                }
+            } else {
+                const transferEnc = (parsed.headers['content-transfer-encoding'] || '').toLowerCase();
+                let decodedContent = decodeBodyTransferEncoding(headerBodySplit.body, transferEnc);
+
+                if (contentType.toLowerCase().includes('text/html')) {
+                    parsed.htmlBody = decodedContent;
+                } else {
+                    parsed.textBody = decodedContent;
+                }
+            }
+
+            state.parsedEmail = parsed;
+
+            // Render Header UI
+            document.getElementById('hdr-subject').innerText = parsed.subject;
+            document.getElementById('hdr-from').innerText = parsed.from;
+            document.getElementById('hdr-to').innerText = parsed.to;
+            document.getElementById('hdr-date').innerText = parsed.date;
+
+            if (parsed.cc) {
+                document.getElementById('hdr-cc').innerText = parsed.cc;
+                document.getElementById('hdr-cc-row').classList.remove('hidden');
+            } else {
+                document.getElementById('hdr-cc-row').classList.add('hidden');
+            }
+
+            // Render Attachments List
+            const attContainer = document.getElementById('attachments-container');
+            const attList = document.getElementById('attachments-list');
+            attList.innerHTML = '';
+
+            if (parsed.attachments.length > 0) {
+                document.getElementById('attachments-count').innerText = parsed.attachments.length;
+                parsed.attachments.forEach((att, idx) => {
+                    const chip = document.createElement('button');
+                    chip.className = 'px-3 py-1.5 bg-white border border-blue-200 rounded-lg text-xs font-medium text-google-text hover:bg-blue-50 transition flex items-center gap-2 shadow-xs';
+                    chip.innerHTML = `<i class="fa-solid fa-paperclip text-google-blue"></i> ${escapeHtml(att.filename)} (${Math.round(att.data.length / 1024)} KB)`;
+                    chip.onclick = () => downloadAttachment(idx);
+                    attList.appendChild(chip);
+                });
+                attContainer.classList.remove('hidden');
+            } else {
+                attContainer.classList.add('hidden');
+            }
+
+            // Render Bodies
+            let finalHtml = parsed.htmlBody;
+            if (!finalHtml && parsed.textBody) {
+                finalHtml = `<div style="font-family: Roboto, sans-serif; white-space: pre-wrap; word-break: break-word; font-size: 14px; line-height: 1.6; color: #202124; padding: 16px;">${escapeHtml(parsed.textBody)}</div>`;
+            }
+
+            // Sanitize HTML using DOMPurify
+            const cleanHtml = DOMPurify.sanitize(finalHtml, {
+                ADD_TAGS: ['style'],
+                ADD_ATTR: ['target']
+            });
+
+            const iframe = document.getElementById('email-iframe');
+            iframe.srcdoc = cleanHtml || '<p style="padding: 16px; font-family: sans-serif; color: #5f6368;">(No HTML content)</p>';
+
+            document.getElementById('email-plain-text').innerText = parsed.textBody || '(No plain text content available)';
+            document.getElementById('email-raw-source').innerText = state.decryptedMimeSource;
+
+            // Show Output Panel & Select HTML tab
+            document.getElementById('output-section').classList.remove('hidden');
+            switchBodyTab('html');
+
+            log('Email successfully rendered on screen!', 'success');
+        }
+
+        /* Helper Functions for MIME Parsing */
+        function splitHeaderAndBody(raw) {
+            const match = raw.match(/(.*?)(?:\r?\n\r?\n)(.*)/s);
+            if (match) {
+                return { header: match[1], body: match[2] };
+            }
+            return { header: '', body: raw };
+        }
+
+        function parseMimeHeaders(headerStr) {
+            const headers = {};
+            const lines = headerStr.split(/\r?\n/);
+            let lastKey = '';
+
+            lines.forEach(line => {
+                if (/^\s+/.test(line) && lastKey) {
+                    headers[lastKey] += ' ' + line.trim();
+                } else {
+                    const colonIdx = line.indexOf(':');
+                    if (colonIdx > 0) {
+                        const key = line.substring(0, colonIdx).toLowerCase().trim();
+                        const val = line.substring(colonIdx + 1).trim();
+                        headers[key] = val;
+                        lastKey = key;
+                    }
+                }
+            });
+            return headers;
+        }
+
+        function parseMultipart(bodyStr, boundary, parsedObj) {
+            const delimiter = '--' + boundary;
+            const parts = bodyStr.split(delimiter);
+
+            parts.forEach(part => {
+                if (!part || part.trim() === '--') return;
+                const split = splitHeaderAndBody(part.trim());
+                if (!split.header) return;
+
+                const headers = parseMimeHeaders(split.header);
+                const contentType = headers['content-type'] || 'text/plain';
+                const contentDisp = headers['content-disposition'] || '';
+                const transferEnc = (headers['content-transfer-encoding'] || '').toLowerCase();
+
+                // Attachment Detection
+                if (contentDisp.toLowerCase().includes('attachment') || headers['content-id']) {
+                    const nameMatch = contentDisp.match(/filename="?([^";]+)"?/i) || contentType.match(/name="?([^";]+)"?/i);
+                    const filename = nameMatch ? nameMatch[1] : `attachment_${parsedObj.attachments.length + 1}`;
+                    
+                    parsedObj.attachments.push({
+                        filename: filename,
+                        mimeType: contentType.split(';')[0],
+                        encoding: transferEnc,
+                        data: split.body.trim()
+                    });
+                    return;
+                }
+
+                // Sub-multipart handling
+                if (contentType.toLowerCase().includes('multipart/')) {
+                    const subBoundary = contentType.match(/boundary="?([^";]+)"?/i);
+                    if (subBoundary && subBoundary[1]) {
+                        parseMultipart(split.body, subBoundary[1], parsedObj);
+                    }
+                    return;
+                }
+
+                let decoded = decodeBodyTransferEncoding(split.body, transferEnc);
+
+                if (contentType.toLowerCase().includes('text/html')) {
+                    parsedObj.htmlBody = decoded;
+                } else if (contentType.toLowerCase().includes('text/plain')) {
+                    parsedObj.textBody = decoded;
+                }
+            });
+        }
+
+        function decodeBodyTransferEncoding(str, encoding) {
+            if (encoding === 'base64') {
+                try {
+                    return forge.util.decodeUtf8(forge.util.decode64(str.replace(/\s+/g, '')));
+                } catch (e) {
+                    return str;
+                }
+            } else if (encoding === 'quoted-printable') {
+                return decodeQuotedPrintable(str);
+            }
+            return str;
+        }
+
+        function decodeQuotedPrintable(str) {
+            return str
+                .replace(/=\r?\n/g, '')
+                .replace(/=([0-9A-F]{2})/gi, (match, hex) => String.fromCharCode(parseInt(hex, 16)));
+        }
+
+        /* Tab Switcher for Email Content View */
+        function switchBodyTab(tab) {
+            const htmlBtn = document.getElementById('btn-view-html');
+            const textBtn = document.getElementById('btn-view-text');
+            const sourceBtn = document.getElementById('btn-view-source');
+
+            const htmlWrap = document.getElementById('body-html-wrapper');
+            const textWrap = document.getElementById('body-text-wrapper');
+            const sourceWrap = document.getElementById('body-source-wrapper');
+
+            // Reset tab styles
+            [htmlBtn, textBtn, sourceBtn].forEach(b => {
+                b.className = 'px-3 py-1 rounded-md text-google-secondaryText hover:text-google-text font-medium';
+            });
+            [htmlWrap, textWrap, sourceWrap].forEach(w => w.classList.add('hidden'));
+
+            if (tab === 'html') {
+                htmlBtn.className = 'px-3 py-1 rounded-md bg-white font-bold text-google-blue shadow-xs';
+                htmlWrap.classList.remove('hidden');
+            } else if (tab === 'text') {
+                textBtn.className = 'px-3 py-1 rounded-md bg-white font-bold text-google-blue shadow-xs';
+                textWrap.classList.remove('hidden');
+            } else if (tab === 'source') {
+                sourceBtn.className = 'px-3 py-1 rounded-md bg-white font-bold text-google-blue shadow-xs';
+                sourceWrap.classList.remove('hidden');
+            }
+        }
+
+        /* Download Attachment */
+        function downloadAttachment(index) {
+            const att = state.parsedEmail.attachments[index];
+            if (!att) return;
+
+            let blob;
+            if (att.encoding === 'base64') {
+                const binary = atob(att.data.replace(/\s+/g, ''));
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                blob = new Blob([bytes], { type: att.mimeType || 'application/octet-stream' });
+            } else {
+                blob = new Blob([att.data], { type: att.mimeType || 'text/plain' });
+            }
+
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = att.filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            log(`Downloaded attachment: ${att.filename}`, 'info');
+        }
+
+        /* Download Decrypted EML */
+        function downloadDecryptedEML() {
+            if (!state.decryptedMimeSource) return;
+
+            const blob = new Blob([state.decryptedMimeSource], { type: 'message/rfc822' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `decrypted_${state.emlFileName || 'email.eml'}`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            log('Downloaded decrypted raw .eml file.', 'info');
+        }
+    </script>
+</body>
+</html>
